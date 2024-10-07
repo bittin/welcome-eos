@@ -8,6 +8,8 @@
 # TODO:
 # - add icons to buttons once proper supported exists in yad
 
+BreakPoint() { : ; }
+
 export PROGNAME=eos-welcome
 export PRETTY_PROGNAME="Welcome"
 
@@ -271,7 +273,7 @@ export -f MirrorRankingButtons
 
 ButtonsMayHide() {
   local -n _text_="$1"
-  if [ "$has_a_connection" = "no" ] ; then
+  if [ "$has_a_connection" = "no" ] && [ $is_installing = yes ] ; then
       _text_+="\n$(ltr ins_no_connection)"
   fi
 }
@@ -292,17 +294,16 @@ INSTALL() {
       --text="$text"
       --text-align=left
 
-      --field=" $(ltr ins_start)!$ICO_CALAMARES!$(ltr ins_starttip)":fbtn                   "eos-install-mode-run-calamares '$lang' ''"
+      --field=" $(ltr ins_start)!$ICO_CALAMARES!$(ltr ins_starttip)":fbtn                   "eos-install-mode-run-calamares '$lang' '$install_mode'"
       # --field=" $(ltr install_community)!$ICO_INSTALL!$(ltr install_community_tip)":fbtn "eos-install-mode-run-calamares '$lang' community"
-      --field=" $(ltr ins_arm_start)!$ICO_INSTALL_ARM!$(ltr ins_arm_starttip)":fbtn    "arm-eos-welcome-installer"
+      # --field=" $(ltr ins_arm_start)!$ICO_INSTALL_ARM!$(ltr ins_arm_starttip)":fbtn    "arm-eos-welcome-installer"
   )
   if [ "$has_a_connection" = "yes" ] ; then
       MirrorRankingButtons
   fi
-  case "$CurrentDesktop" in
-      kde)      tabcontents+=(--field=" $(ltr ins_pm)!$ICO_PARTITIONMANAGER!$(ltr ins_pmtip2)":fbtn 'partitionmanager') ;;
-      xfce | *) tabcontents+=(--field=" $(ltr ins_pm)!$ICO_GPARTED!$(ltr ins_pmtip)":fbtn 'gparted') ;;
-  esac
+
+  IsInstalled partitionmanager && tabcontents+=(--field=" $(ltr ins_pm) (partitionmanager)!$ICO_PARTITIONMANAGER!$(ltr ins_pmtip2)":fbtn 'partitionmanager')
+  IsInstalled gparted          && tabcontents+=(--field=" $(ltr ins_pm) (gparted)!$ICO_GPARTED!$(ltr ins_pmtip)":fbtn 'gparted')
 
   ShowChangeResoButton
   if [ "$has_a_connection" = "yes" ] ; then
@@ -469,7 +470,7 @@ AfterInstall() {
       --field=" $(ltr after_install_ew2)!$ICO_WALL!$(ltr after_install_ewtip2)":fbtn  'eos-wallpaper-set'
       --field=" $(ltr after_install_more_wall)!$ICO_WALL_DOWNLOAD!$(ltr after_install_more_wall_tip)":fbtn  'RunInTerminal eos-download-wallpapers'
   )
-  if IsR8168Card ; then
+  if [ "$do_r8168_check" = yes ] && IsR8168Card ; then
       tabcontents+=(
           --field=" $(ltr after_install_r8168)!$ICO_SYSTOOLS!$(ltr after_install_r8168_tip)":fbtn "ethernet_toggle_r8168_r8169"
       )
@@ -493,10 +494,12 @@ AddXfceThemingButtons() {
         local -r conf="$HOME/.config"
         local -r conf2='~/.config'
         local -r bak=xfce-theme-bak
-        local -r dirs=(xfce4 Thunar)
-        local -r dirs_list=$(echo "${dirs[*]}" | tr ' ' ',')
         local dir
         local msg=""
+        local dirs=(xfce4)
+        expac -Q %n endeavouros-skel-xfce4 >/dev/null && dirs+=(Thunar)                        # compatibility for old installs
+        local -r dirs_list=$(echo "${dirs[*]}" | tr ' ' ',')
+        
         msg+="About to change the Xfce theme to '$new_theme'.\n"
         msg+="The current theme will be saved under folder $conf2/$bak/$date_time\n"
         msg+="The new theme will be in folders $conf2/{$dirs_list}\n\n"
@@ -736,7 +739,7 @@ personal_commands_add() {   # add one personal command
     [ -n "$cmd" ] || cmd="$(echo "$commandline" | /usr/bin/awk '{print $1}')"
 
     if (/usr/bin/which $cmd &> /dev/null) ; then
-        welcome_own_commands+=(--field=" $name!$ICO_CUSTOM!$description":fbtn "$commandline")
+        welcome_own_commands+=(--field=" $name!$icon!$description":fbtn "$commandline")
     else
         printf "%s: %s\n    %s\n" "$(/usr/bin/date "+%x %X")" "$FUNCNAME:" "warning: command '$cmd' not found" >> /tmp/welcome-personal-commands.log
         echo "$FUNCNAME: warning: command '$cmd' not found" >&2
@@ -804,7 +807,7 @@ OwnCommands() {
   if [ "$show_buttons" = "yes" ] ; then
       tabcontents+=(
           --field=" $(ltr butt_owncmds_help)!$ICO_INFO_WEB!$(ltr nb_tab_owncmdstip)":fbtn   "WelcomeBrowser $adding_own_commands"
-          --field=" $(ltr butt_owncmds_dnd)!$ICO_CUSTOM!$(ltr butt_owncmds_dnd_help)":fbtn  "welcome-dnd"
+          --field=" $(ltr butt_owncmds_dnd)!$ICO_SYSTOOLS!$(ltr butt_owncmds_dnd_help)":fbtn  "welcome-dnd"
       )
   fi
   tabcontents+=("${welcome_own_commands[@]}")
@@ -1315,8 +1318,8 @@ LangChoose() {
         "Romanian (Română)"                     ro_RO
         "Russian (Русский)"                     ru_RU
         # "Serbian (Srpski)" sr_?        # translation file incorrectly named as translation-rs.bash; rs should be: sr !!
-        "Sweden (Svenska)"                      sv_SE
         "Slovak (slovenský)"                    sk_SK
+        "Sweden (Svenska)"                      sv_SE
         "Thai (แบบไทย)"                         th_TH
         "Ukrainian (українська)"                uk_UA
         "Chinese-China (中文-中国)"             zh_CN
@@ -1343,6 +1346,15 @@ LangChoose() {
 }
 export -f LangChoose
 
+LangImplConvert() {
+    # convert user given language to supported translations in package eos-translations
+    case "$lang" in
+        pt_BR | zh_?? | uk_UA) ;;
+        *) lang=${lang%%_*} ;;
+    esac
+}
+export -f LangImplConvert
+
 LanguageSelection() {
     # $lang must match the '*' in the translation file names, i.e.
     # /usr/share/endeavouros/scripts/translation-*.bash.
@@ -1350,12 +1362,7 @@ LanguageSelection() {
     local lang=""
 
     LangChoose ALL
-
-    # convert user given language to supported translations in package eos-translations
-    case "$lang" in
-        pt | pt_BR | zh_* | uk_*) ;;
-        *) lang=${lang%%_*} ;;
-    esac
+    LangImplConvert
 
     RestartWelcome --lang=$lang
 }
@@ -1369,7 +1376,10 @@ LanguageSelectionButton() {
 }
 
 StartHere() {
-    local arg lang
+    eos_assert_deps $PROGNAME yad || return 1
+    BreakPoint
+
+    local arg lang=""
     local yad_zombie_log=/tmp/yad-zombies.log
     local tr_engine=bing
     local tr_prefer=manual
@@ -1403,16 +1413,40 @@ StartHere() {
         esac
     done
 
+    local install_mode=""
     local is_installing=no
+
     IsInstalling && is_installing=yes
+
+    if [ "$is_installing" = "yes" ] && [ -z "$lang" ] ; then
+        lang="$LANG"
+        LangImplConvert
+        _init_translations --tr-prefer="$tr_prefer" "$lang" || { echo "language fail" >&2 ; exit 1 ; }
+        AfterTranslations
+    fi
+
 
     if eos-connection-checker ; then
         has_a_connection=yes
     else
         if [ $is_installing = yes ] ; then
             if type systemsettings >& /dev/null ; then
-                systemsettings kcm_networkmanagement
-                eos-connection-checker && has_a_connection=yes
+                local -r ICO_NETWORKMANAGER=/usr/share/icons/Qogir/scalable/apps/networkmanager.svg
+                eos_yad --form \
+                        --title="$(ltr ins_conn_issue_title)" \
+                        --image=$ICO_QUESTION \
+                        --text="$(ltr ins_conn_issue_text)" \
+                        --button="$(ltr ins_conn_issue_nm1)!$ICO_NETWORKMANAGER!$(ltr ins_conn_issue_nm2)":1 \
+                        --button="$(ltr ins_conn_issue_oi1)!$ICO_INSTALL!$(ltr ins_conn_issue_oi2)":3 \
+                        --button="$(ltr ins_conn_issue_ex1)!$ICO_EXIT!$(ltr ins_conn_issue_ex2)":5
+                case "$?" in
+                    1) systemsettings kcm_networkmanagement
+                       eos-connection-checker && has_a_connection=yes
+                       ;;
+                    3) install_mode=offline ;;
+                    5) return ;;
+                    *) return 1 ;;
+                esac
             else
                 local sleeptime=1
                 local rounds=10
@@ -1496,6 +1530,12 @@ StartHere() {
                 ;;
         esac
     done
+    if [ "$is_installing" = "no" ] && [ -z "$lang" ] ; then
+        lang="$LANG"
+        LangImplConvert
+    fi
+
+    BreakPoint
 
     _init_translations --tr-prefer="$tr_prefer" "$lang" || { echo "language fail" >&2 ; exit 1 ; }
 
@@ -1568,7 +1608,9 @@ StartHere() {
         return
     fi
 
-    if [ "$is_installing" = "yes" ] ; then
+    local do_r8168_check=no     # yes or no
+
+    if [ "$do_r8168_check" = yes ] && [ "$is_installing" = "yes" ] ; then
         R8168check_at_install
     fi
 
@@ -1627,14 +1669,20 @@ StartHere() {
     notebook+=(--use-interp)
     notebook+=(--expand)
 
+    BreakPoint
+
     if [ "$is_installing" = "no" ] ; then
-        # try to give a critical notification
-        if [ "$has_a_connection" = "yes" ] ; then
-            local news_date_url="$(Github2Gitlab https://raw.githubusercontent.com/endeavouros-team/Important-news/main/do_notify)"  # this file can contain one or more date defs, one per line
-            local news_date="$(curl -Lsm 10 -o- $news_date_url)"
-            if [ -n "$news_date" ] ; then
-                notebook+=(--text="$(ltr nb_nofify_user1)\n$news_date\n$(ltr nb_nofify_user2) <b>$(ltr butt_softnews)</b> $(ltr nb_nofify_user3)\n")
-            fi
+        # Try to give a critical notification.
+        #
+        # File 'do_notify' can contain one or more date defs, one per line. Ignored lines:
+        #   - comment lines (first non-white char is #)
+        #   - empty lines (contain only white spaces)
+        #
+        local news_date_url="$(Github2Gitlab https://raw.githubusercontent.com/endeavouros-team/Important-news/main/do_notify)"
+        local news_date=""
+        news_date="$(curl --fail -Lsm 10 -o- $news_date_url | grep -Pv "^[ \t]*#|^[ \t]*$")"
+        if [ "$news_date" ] ; then
+            notebook+=(--text="$(ltr nb_notify_user1)\n$news_date\n$(ltr nb_notify_user2) <b>$(ltr butt_softnews)</b> $(ltr nb_notify_user3)\n")
         fi
     fi
 
@@ -1667,29 +1715,19 @@ StartHere() {
         LanguageSelectionButton
     fi
 
-    if [ "$has_a_connection" = "yes" ] ; then
-        notebook+=(--button=" $(ltr butt_softnews)!$ICO_NEWS!$(ltr butt_softnews_tip)":"ImportantNews")
-        notebook+=(--button=" $(ltr butt_changelog)!$ICO_CHANGES!$(ltr butt_changelogtip)":"WelcomeChangelog")
-    fi
+    notebook+=(--button=" $(ltr butt_softnews)!$ICO_NEWS!$(ltr butt_softnews_tip)":"ImportantNews")
+    notebook+=(--button=" $(ltr butt_changelog)!$ICO_CHANGES!$(ltr butt_changelogtip)":"WelcomeChangelog")
     case "$EOS_WELCOME_HAS_SEE_YOU_LATER_BUTTON" in
         yes)
-            if [ "$has_a_connection" = "yes" ] ; then
-                notebook+=(--button=" $(ltr butt_help)!$ICO_HELP!":"WelcomeHelp")
-            fi
+            notebook+=(--button=" $(ltr butt_help)!$ICO_HELP!":"WelcomeHelp")
             if [ "$is_installing" = "no" ] ; then
                 notebook+=(--button=" $(ltr butt_noshow)!$ICO_SAD!$(ltr butt_noshow)":5)
             fi
             notebook+=(--button=" $(ltr butt_later)!$ICO_ANGEL!$(ltr butt_latertip)":0)
             ;;
         no|*)
-            if [ "$has_a_connection" = "yes" ] ; then
-                if [ "$is_installing" = "no" ] ; then
-                    notebook+=(--button=" $(ltr butt_noshow)!$ICO_SAD!$(ltr butt_noshow)":5)
-                fi
-                notebook+=(--button=" $(ltr butt_help)!$ICO_HELP!":"WelcomeHelp")
-            else
-                notebook+=(--button=yad-quit:1)
-            fi
+            [ "$is_installing" = "no" ] && notebook+=(--button=" $(ltr butt_noshow)!$ICO_SAD!$(ltr butt_noshow)":5)
+            notebook+=(--button=" $(ltr butt_help)!$ICO_HELP!":"WelcomeHelp")
             ;;
     esac
 
