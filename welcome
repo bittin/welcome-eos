@@ -49,7 +49,8 @@ export PROG_PACKAGENAME="welcome"
 export INSTALLER_PROGRAM=/usr/bin/calamares
 export EOS_LIVEUSER=liveuser
 export EOS_KEEP_PKGS
-export PROG_VERSION="$(expac -Q %v $PROG_PACKAGENAME)"
+PROG_VERSION="$(expac -Q %v $PROG_PACKAGENAME)"
+export PROG_VERSION
 export INSTALL_LOG_FILE=/home/$EOS_LIVEUSER/endeavour-install.log
 
 
@@ -224,6 +225,15 @@ WelcomeDevelConf() {
 }
 export -f WelcomeDevelConf
 
+AddField2() {    # Still experimental!
+    [ $NewFieldHandling = yes ] || return 1
+    local app="$1"
+    shift
+    if [ -z "$app" ] || which "$app" &>/dev/null ; then
+        tabcontents+=(--field=" $@")
+    fi
+}
+
 ShowChangeResoButton() {
     # Allow showing a button for changing the display resolution?
 
@@ -242,50 +252,81 @@ ShowChangeResoButton() {
     fi
 
     if [ "$show_reso_butt" = "yes" ] ; then
+        # AddField2 "" "$(ltr ins_reso)!$ICO_PREFERENCES_DISPLAY!$(ltr ins_resotip)":fbtn   ChangeDisplayResolution
         tabcontents+=(--field=" $(ltr ins_reso)!$ICO_PREFERENCES_DISPLAY!$(ltr ins_resotip)":fbtn   ChangeDisplayResolution)
     fi
 }
 export -f ShowChangeResoButton
 
-RateMirrorsCmd() {
-    local cmd=""
-    if [ "$WELCOME_RATE_MIRRORS_COMMAND" ] ; then
-        cmd="$WELCOME_RATE_MIRRORS_COMMAND"
-    else
-        local delay="$RATE_MIRRORS_MAX_DELAY_ARCH"
-        [ "$delay" ] || delay=3600
-        cmd="rate-mirrors arch --max-delay=$delay | sudo tee /etc/pacman.d/mirrorlist"
-    fi
+RateMirrors_arch() {
+    local tmpfile=$(mktemp -u)
+    local delay="$RATE_MIRRORS_MAX_DELAY_ARCH"
+    [ "$delay" ] || delay=3600
+    chmod go-rwx $tmpfile
+    local cmd="/usr/bin/rate-mirrors --save $tmpfile --disable-comments-in-file arch --max-delay=$delay"
+          cmd+="; [ -e $tmpfile ] && sudo cp $tmpfile /etc/pacman.d/mirrorlist"
+          cmd+="; sleep 1; rm -f $tmpfile"
     RunInTerminal "$cmd"
 }
-export -f RateMirrorsCmd
+RateMirrors_eos() {
+    local tmpfile=$(mktemp -u)
+    chmod go-rwx $tmpfile
+    local cmd="/usr/bin/rate-mirrors --save $tmpfile --disable-comments-in-file endeavouros"
+          cmd+="; [ -e $tmpfile ] && sudo cp $tmpfile /etc/pacman.d/endeavouros-mirrorlist"
+          cmd+="; sleep 1; rm -f $tmpfile"
+    RunInTerminal "$cmd"
+}
+
+export -f RateMirrors_eos
+export -f RateMirrors_arch
 
 MirrorRankingButtons() {
+    local has_ratemirrors=no
+    [ -x /usr/bin/rate-mirrors ] && has_ratemirrors=yes
+
     if [ "$(eos_GetArch)" != "armv7h" ] ; then
         if [ -x /usr/bin/reflector-simple ] ; then
             tabcontents+=(
                 --field=" $(ltr after_install_um) (Arch, reflector-simple)!$ICO_MIRROR_RANK!$(ltr after_install_umartip)":fbtn "reflector-simple"
             )
+            # AddField2 reflector-simple "$(ltr after_install_um) (Arch, reflector-simple)!$ICO_MIRROR_RANK!$(ltr after_install_umartip)":fbtn "reflector-simple"
         fi
-        if [ -x /usr/bin/rate-mirrors ] ; then
+        if [ $has_ratemirrors = yes ] ; then
             tabcontents+=(
-                --field=" $(ltr after_install_um) (Arch, rate-mirrors)!$ICO_MIRROR_RANK!$(ltr after_install_umartip)":fbtn "RateMirrorsCmd"
+                --field=" $(ltr after_install_um) (Arch, rate-mirrors)!$ICO_MIRROR_RANK!$(ltr after_install_umartip)":fbtn "RateMirrors_arch"
             )
+            # AddField2 rate-mirrors "$(ltr after_install_um) (Arch, rate-mirrors)!$ICO_MIRROR_RANK!$(ltr after_install_umartip)":fbtn "RateMirrors_arch"
         fi
-        if [ -x /usr/bin/rami ] ; then
-            if [ -z "$WELCOME_RAMI_OPTIONS" ] ; then
-                WELCOME_RAMI_OPTIONS="--save --timeout-rank 10 --ranking-data --continent -cDE,US"
+        if [ -x /usr/bin/create-ml ] ; then
+            if [ -z "$WELCOME_CREATE_ML_OPTIONS" ] ; then
+                WELCOME_CREATE_ML_OPTIONS="--save"
             fi
             tabcontents+=(
-                --field=" $(ltr after_install_um) (Arch, rami)!$ICO_MIRROR_RANK!$(ltr after_install_umartip)":fbtn "RunInTerminal '/bin/rami $WELCOME_RAMI_OPTIONS'"
+                --field=" $(ltr after_install_um) (Arch, create-ml)!$ICO_MIRROR_RANK!$(ltr after_install_umartip)":fbtn "RunInTerminal 'create-ml $WELCOME_CREATE_ML_OPTIONS'"
             )
         fi
+        # if [ -x /usr/bin/rami ] ; then
+        #     if [ -z "$WELCOME_RAMI_OPTIONS" ] ; then
+        #         WELCOME_RAMI_OPTIONS="--save --timeout-rank 10 --ranking-data --continent -cDE,US"
+        #     fi
+        #     tabcontents+=(
+        #         --field=" $(ltr after_install_um) (Arch, rami)!$ICO_MIRROR_RANK!$(ltr after_install_umartip)":fbtn "RunInTerminal '/bin/rami $WELCOME_RAMI_OPTIONS'"
+        #     )
+        #     # AddField2 "" "$(ltr after_install_um) (Arch, rami)!$ICO_MIRROR_RANK!$(ltr after_install_umartip)":fbtn "RunInTerminal '/bin/rami $WELCOME_RAMI_OPTIONS'"
+        # fi
     fi
     if [ -x /usr/bin/eos-rankmirrors ] ; then
         tabcontents+=(
-            --field=" $(ltr after_install_um) (EndeavourOS)!$ICO_MIRROR_RANK!$(ltr after_install_umentip)":fbtn "RunInTerminal 'LANG=C eos-rankmirrors'"
+            --field=" $(ltr after_install_um) (EndeavourOS, eos-rankmirrors)!$ICO_MIRROR_RANK!$(ltr after_install_umentip)":fbtn "RunInTerminal 'LANG=C eos-rankmirrors'"
         )
     fi
+    if [ $has_ratemirrors = yes ] ; then
+        tabcontents+=(
+            --field=" $(ltr after_install_um) (EndeavourOS, rate-mirrors)!$ICO_MIRROR_RANK!$(ltr after_install_umentip)":fbtn  "RateMirrors_eos"
+        )
+    fi
+    # AddField2 eos-rankmirrors "$(ltr after_install_um) (EndeavourOS, eos-rankmirrors)!$ICO_MIRROR_RANK!$(ltr after_install_umentip)":fbtn "RunInTerminal 'LANG=C eos-rankmirrors'"
+    # AddField2 rate-mirrors    "$(ltr after_install_um) (EndeavourOS, rate-mirrors)!$ICO_MIRROR_RANK!$(ltr after_install_umentip)":fbtn    "RateMirrors_eos"
 }
 export -f MirrorRankingButtons
 
@@ -332,6 +373,7 @@ INSTALL() {
           --field=" $(ltr ins_customized)!$ICO_CUSTOM!$(ltr ins_cust_text)":fbtn          "AskUserCustomUrl"
       )
   fi
+  TesterIsoFetching
 
   [ "$handle" != "calculate" ] && "${tabcontents[@]}" >& /dev/null &
 }
@@ -568,6 +610,16 @@ PacdiffIcon() {
     done
 }
 
+TesterIsoFetching() {
+    # for the ISO testers
+    if [ $IsIsoTesting = yes ] || pacman -Q fetch-iso &>/dev/null ; then
+        IsIsoTesting=yes
+        tabcontents+=(
+            --field=" Fetch a tester ISO!$ICO_INFO_WEB!For ISO testers only":fbtn   "RunInTerminal fetch-iso"
+        )
+    fi
+}
+
 DailyAssistant() {
   local handle="$1"
   local tabnum="$2"
@@ -625,6 +677,7 @@ DailyAssistant() {
           --field=" $dname: $(ltr daily_assist_DEinfo)!$ICO_INFO_WEB!$CurrentDesktop: $(ltr daily_assist_DEinfo_tip)":fbtn   "WelcomeBrowser https://wiki.archlinux.org/title/$dname"
       )
   fi
+  TesterIsoFetching
 
   [ "$handle" != "calculate" ] && "${tabcontents[@]}" >& /dev/null &
 }
@@ -1483,8 +1536,20 @@ HandleOptions2() {
     [ "$1" ] && DIE "unsupported parameter '$1'"
 }
 
+_MirrorlistCheck() {
+    local filename="/etc/pacman.d/mirrorlist"
+    if [ ! -e "$filename" ] ; then
+        local msg="File '$filename' was not found."
+        local title="System problem"
+        echo "$PROGNAME: error: $msg" >&2
+        echo "$msg" | eos_yad_problem "$title" --text="<b>$PROGNAME</b> detected a system problem!" --height=200 --width=300
+        exit 1
+    fi
+}
+
 StartHere() {
-    eos_assert_deps $PROGNAME yad || return 1
+    AssignIconVariables
+    _MirrorlistCheck
     DebugBreak
 
     local -r LOPTS="changelog,lang:,tr-engine:,tr-prefer:,id:,ni:,verboselog,genlang:,help,enable,disable,once,startdelay:,version,testing,installer"
@@ -1505,13 +1570,15 @@ StartHere() {
     local has_a_connection=no
     local ISO_VERSION=""                      # only for the installer
     local CurrentDesktop=""
+    local IsIsoTesting=no
+
+    export NewFieldHandling=yes
 
     source /etc/welcome-installer.conf || DIE "file /etc/welcome-installer.conf not found"
 
     IncludesOption --verboselog "$@" && export WELCOME_VERBOSE_LOG=yes
 
     GetCurrentDesktop CurrentDesktop
-    AssignIconVariables
 
     export show_installer=no    # explicitly show the installer, for testing only
 
@@ -1528,7 +1595,6 @@ StartHere() {
         _init_translations --tr-prefer="$tr_prefer" "$lang" || { echo "language fail" >&2 ; exit 1 ; }
         AfterTranslations
     fi
-
 
     if eos-connection-checker ; then
         has_a_connection=yes
@@ -1704,7 +1770,7 @@ StartHere() {
     else
         [ "$has_a_connection" = "yes" ] && eos-kbd-set
 
-        if [ -x /usr/bin/numlockx ] ; then
+        if [ "$XDG_SESSION_TYPE" = x11 ] && [ -x /usr/bin/numlockx ] ; then
             # some laptops have number pad inside the normal keyboard, so set NumLock off
             numlockx on  # show we are adjusting numlock...
             sleep 1
@@ -1743,15 +1809,19 @@ StartHere() {
     if [ "$is_installing" = "no" ] ; then
         # Try to give a critical notification.
         #
-        # File 'do_notify' can contain one or more date defs, one per line. Ignored lines:
+        # File 'do_notify' contains one or more date defs, one per line in ascending order.
+        # Ignored lines:
         #   - comment lines (first non-white char is #)
         #   - empty lines (contain only white spaces)
         #
         local news_date_url="$(Github2Gitlab https://raw.githubusercontent.com/endeavouros-team/Important-news/main/do_notify)"
-        local news_date=""
-        news_date="$(curl --fail -Lsm 10 -o- $news_date_url | grep -Pv "^[ \t]*#|^[ \t]*$")"
-        if [ "$news_date" ] ; then
-            notebook+=(--text="$(ltr nb_notify_user1)\n$news_date\n$(ltr nb_notify_user2) <b>$(ltr butt_softnews)</b> $(ltr nb_notify_user3)\n")
+        local news_dates="" latest_date=""
+        local latest_welcome_news_date_file="$HOME/.config/welcome_news_latest_date_file"
+        news_dates="$(curl --fail -Lsm 10 -o- $news_date_url | grep -Pv "^[ \t]*#|^[ \t]*$")"
+        latest_date=$(echo "$news_dates" | tail -n1)
+        if [ "$latest_date" ] && [ "$latest_date" != "$(cat "$latest_welcome_news_date_file" 2>/dev/null)" ] ; then
+           echo "$latest_date" > "$latest_welcome_news_date_file"
+           notebook+=(--text="$(ltr nb_notify_user1)\n$news_dates\n$(ltr nb_notify_user2) <b>$(ltr butt_softnews)</b> $(ltr nb_notify_user3)\n")
         fi
     fi
 
@@ -1800,10 +1870,11 @@ StartHere() {
 
     local error_log=/tmp/$PROGNAME.log
     local comment=""
+    local result=0
 
     "${notebook[@]}" 2>/dev/null
 
-    local result=$?
+    result=$?
 
     case "$result" in
         5) WelcomeSettings disable ;;
