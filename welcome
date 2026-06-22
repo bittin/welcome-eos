@@ -25,7 +25,7 @@ test -r  $EOS_SCRIPTS_YAD || {
     echo "ERROR: cannot find $EOS_SCRIPTS_YAD" >&2
     exit 1
 }
-source $EOS_SCRIPTS_YAD
+source $EOS_SCRIPTS_DIR/eos-script-lib-yad
 
 unset EOS_SCRIPTS_YAD
 
@@ -1343,20 +1343,20 @@ GetIsoDateStr() {
     echo "ISO: $ISO_VERSION"
 }
 
-SetCalamaresVersionInfo() {
-    if [ -n "$ISO_VERSION" ] ; then
-        local file=/etc/calamares/branding/endeavouros/branding.desc
-        if [ -f $file ] ; then
-            local str
-
-            for str in "version:" "shortVersion:" ; do
-                if [ "$(grep -w "$str" $file | awk '{print $2}')" != "$ISO_VERSION" ] ; then
-                    sudo sed -i $file -E "s|^([ ]+$str[ ]+).*|\1$ISO_VERSION|"
-                fi
-            done
-        fi
-    fi
-}
+# SetCalamaresVersionInfo() {
+#     if [ -n "$ISO_VERSION" ] ; then
+#         local file=/etc/calamares/branding/endeavouros/branding.desc
+#         if [ -f "$file" ] ; then
+#             local str
+#
+#             for str in "version:" "shortVersion:" ; do
+#                 if [ "$(grep -w "$str" "$file" | awk '{print $2}')" != "$ISO_VERSION" ] ; then
+#                     sudo sed -i "$file" -E "s|^([ ]+$str[ ]+).*|\1$ISO_VERSION|"
+#                 fi
+#             done
+#         fi
+#     fi
+# }
 
 VerboseLog() {
     if [ "$WELCOME_VERBOSE_LOG" = "yes" ] ; then
