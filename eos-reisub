@@ -1,0 +1,132 @@
+#!/bin/bash
+
+# Enable or disable the REISUB feature on an EndeavourOS system.
+
+Fail() {
+    local arg="$1"
+    notify-send --icon="dialog-error" --urgency=normal --expire-time=$REISUB_TIMEOUT_ERROR \
+                --app-name="$progname" \
+                "REISUB" \
+                "$progname: $arg: $(ltr updt_failure)"
+    exit 1
+}
+
+Main() {
+    local progname="${0##*/}"
+    local translations_dir=/usr/share/endeavouros/scripts      # variable required!
+    local -r reisub_file=/etc/sysctl.d/99-reisub.conf
+    local -r lib_dir=/usr/share/endeavouros/scripts
+    local -r lib_file="$lib_dir/eos-script-lib-yad"
+    local REISUB_TIMEOUT_NOTIFY=5000
+    local REISUB_TIMEOUT_ERROR=10000
+    local configfile=/etc/$progname.conf
+    local body
+
+    # shellcheck disable=1090
+    [ -e "$configfile" ] && source "$configfile"
+
+    source "$translations_dir/translations.bash" || Fail "$translations_dir/translations.bash"
+    _init_translations ""
+    # shellcheck disable=1090
+    source "$lib_file" || Fail "$lib_file"
+    AssignIconVariables_in_eos_bash_shared
+    case "$1" in
+        -e | --enable)    [ -e $reisub_file ] || echo 'kernel.sysrq=1' | pkexec tee $reisub_file > /dev/null ;;
+        -d | --disable)   [ -e $reisub_file ] && pkexec rm -f $reisub_file ;;
+        --edit-config)    EditConfig ;;
+        -h | --help)      Help 0 ;;
+        *) Fail "\$1 = '$1'" ;;
+    esac
+    if [ -e "$reisub_file" ] ; then
+        body="REISUB $(ltr _commonphrase_enabled)"
+    else
+        body="REISUB $(ltr _commonphrase_disabled)"
+    fi
+    notify-send -i "$ICO_INFO" -u normal -t "$REISUB_TIMEOUT_NOTIFY" -a "eos-reisub" "REISUB" "$body"
+}
+
+Help() {
+    cat <<EOF
+Usage:   $progname [options]
+Options:
+         -e, --enable     Enable REISUB support.
+         -d, --disable    Disable REISUB support.
+         --edit-config    Edit the configuration file.
+         -h, --help       This help.
+EOF
+    [ "$1" ] && exit "$1"
+}
+
+EditConfig() {
+    local conf="/etc/$progname.conf"
+    [ -e "$conf" ] || sudo touch "$conf"
+    sudo xdg-open "$conf"
+    exit 0
+}
+
+Main "$@"
+
+
+
+
+# echo2() {
+#     local reset=no
+#     while true ; do
+#         case "$1" in
+#             -red | -blue | -cyan | -magenta | -yellow | -green)  eos-color "${1:1}" 2 ;;
+#             -error | -warning | -fail | -info | -tip | -ok)      eos-color "${1:1}" 2 ;;
+#             -reset)                                              eos-color "${1:1}" 2; reset=yes ;;
+#             *)                                                   break ;;
+#         esac
+#         shift
+#     done
+#     echo -e "$@" >&2
+#     [ "$reset" = no ] || eos-color reset 2
+# }
+
+# NotifySendHelp() { echo2 "${FUNCNAME[0]}: see the man page of notify-send"; [ "$1" ] && exit "$1"; }
+# PrintId()        { echo2 "${FUNCNAME[0]}}: TODO!"; }
+# Wait()           { echo2 "${FUNCNAME[0]}}: TODO!"; }
+# Transient()      { echo2 "${FUNCNAME[0]}}: TODO!"; }
+
+# NotifySendOptions() {
+#     local opts
+#     local lopts="help,app-name:,action:,selected-action-fd:,activation-token-fd:,urgency:,expire-time:"
+#     lopts+=",icon:,app-icon:,category:,hint:,print-id,id-fd:,replace-id:,wait,transient"
+#     local sopts="?a:A:u:t:i:n:c:h:pr:we"
+#     opts=$(getopt -o="$sopts" --longoptions "$lopts" --name "$progname" -- "$@") || exit 1
+#     eval set -- "$opts"
+
+#     while true ; do
+#         case "$1" in
+#             -"?" | --help)      NotifySendHelp 0 ;;
+#             -a | --app-name)    appname="$2";    shift ;;
+#             -A | --action)      action="$2";     shift ;;
+#             -u | --urgency)     urgency="$2";    shift ;;
+#             -t | --expire-time) expiretime="$2"; shift ;;
+#             -i | --icon)        icon="$2";       shift ;;
+#             -n | --app-icon)    appicon="$2";    shift ;;
+#             -c | --category)    category="$2";   shift ;;
+#             -h | --hint)        hint="$2";       shift ;;
+#             -r | --replace-id)  replace_id="$2"; shift ;;
+
+#             -p | --print-id)    PrintId   ;;
+#             -w | --wait)        Wait      ;;
+#             -e | --transient)   Transient ;;
+
+#             --selected-action-fd)  sel_action_fd="$2"; shift ;;
+#             --activation-token-fd) act_token_fd="$2";  shift ;;
+#             --id-fd)               id_fd="$2";         shift ;;
+
+#             --) shift; break ;;
+#         esac
+#         shift
+#     done
+#     others=("$@")
+# }
+
+# NotifySend() {
+#     local sel_action_fd act_token_fd id_fd replace_id hint category appicon icon expiretime urgency action appname
+#     local others=()
+#     NotifySendOptions "$@"
+# }

@@ -733,21 +733,10 @@ Github2Gitlab() {
 }
 export -f Github2Gitlab
 
-Reisub() {
-    local file=/etc/sysctl.d/99-reisub.conf
-    local time=5000
-
-    case "$1" in
-        --enable)    [ -e $file ] || echo 'kernel.sysrq=1' | pkexec tee $file > /dev/null ;;
-        --disable)   [ -e $file ] && pkexec rm -f $file ;;
-    esac
-    if [ -e $file ] ; then
-        eos_notification $ICO_INFO normal $time REISUB "REISUB $_COMMONPHRASE_ENABLED" ""
-    else
-        eos_notification $ICO_INFO normal $time REISUB "REISUB $_COMMONPHRASE_DISABLED" ""
-    fi
-}
-export -f Reisub
+# Reisub() {
+#     eos-reisub "$1"
+# }
+# export -f Reisub
 
 UsefulTips() {
   local handle="$1"

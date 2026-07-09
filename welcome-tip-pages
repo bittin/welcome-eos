@@ -25,7 +25,7 @@ WELCOME_TIP_PAGES+=(
     "$(ltr arch_chroot)|$(ltr arch_chroot_tip)|'https://discovery.endeavouros.com/system-rescue/arch-chroot'"
 
     "$(ltr after_install_reisub)|$(ltr after_install_reisubtip)|'$REISUB_PAGE'"
-    "$(ltr after_install_reisub2)|$(ltr after_install_reisubtip)|Reisub --enable|$ICO_CUSTOM"
+    "$(ltr after_install_reisub2)|$(ltr after_install_reisubtip)|eos-reisub --enable|$ICO_CUSTOM"
 
     "$(ltr butt_owncmds_help)|$(ltr nb_tab_owncmdstip)|$adding_own_commands"
     "$(ltr butt_owncmds_dnd)|$(ltr butt_owncmds_dnd_help)|welcome-dnd|$ICO_SYSTOOLS"
