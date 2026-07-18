@@ -33,6 +33,7 @@ Main() {
     case "$1" in
         -e | --enable)    [ -e $reisub_file ] || echo 'kernel.sysrq=1' | pkexec tee $reisub_file > /dev/null ;;
         -d | --disable)   [ -e $reisub_file ] && pkexec rm -f $reisub_file ;;
+        --status | "")    ;;
         --edit-config)    EditConfig ;;
         -h | --help)      Help 0 ;;
         *) Fail "\$1 = '$1'" ;;
@@ -52,6 +53,8 @@ Options:
          -e, --enable     Enable REISUB support.
          -d, --disable    Disable REISUB support.
          --edit-config    Edit the configuration file.
+         --status         Show the state of REISUB setting.
+                          This is the default.
          -h, --help       This help.
 EOF
     [ "$1" ] && exit "$1"
