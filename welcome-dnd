@@ -17,7 +17,7 @@ export -f eos_yad
 
 DndCreateConfigFile() {
     if [ ! -r "$configfile" ] ; then
-        cat <<EOF > $configfile
+        cat <<EOF > "$configfile"
 #!/bin/bash
 
 local welcome_own_commands=(
@@ -28,7 +28,23 @@ EOF
     fi
 }
 
+DndPut() {
+    local str="$1"
+    local done="$2"                           # if yes then stop
+    local item="personal_commands_add"
+    [ "$done" ] && done="" || done="\\"
+    case "${FUNCNAME[1]}" in
+        DndPutNext)  item="${item//?/ }" ;;
+        DndPutFirst) printf "\n" >> "$configfile"  ;;
+    esac
+    printf "%s \"%s\"" "$item" "$str"     >> "$configfile"
+    printf "%s\n" "$done"                 >> "$configfile"
+}
+DndPutFirst() { DndPut "$1" "$2"; }
+DndPutNext()  { DndPut "$1" "$2"; }
+
 DndAddField() {
+    local needed_app="$1"    # optional; usually some part of $command
     local configfile="$HOME/.config/welcome-own-cmds.conf"
     local mode=""
 
@@ -50,25 +66,27 @@ DndAddField() {
             ;;
         *)
             # new or empty
-            cat <<EOF >> "$configfile"
-
-personal_commands_add "$command" \\
-                      "$name" \\
-                      "$icon" \\
-                      "$description"
-EOF
+            DndPutFirst "$command"
+            DndPutNext  "$name"
+            DndPutNext  "$icon"
+            if [ "$needed_app" ] ; then
+                DndPutNext  "$description"
+                DndPutNext  "$needed_app" yes
+            else
+                DndPutNext  "$description" yes
+            fi
             ;;
     esac
 }
 
 DndDesktopFile() {
     local file="${arg#file://}"
-    local icon="$(grep "^Icon=" "$file" | head -n 1 | cut -d '=' -f 2)"
-    local name="$(grep "^Name=" "$file" | head -n 1 | cut -d '=' -f 2)"
-    local generic_name="$(grep "^GenericName=" "$file" | head -n 1 | cut -d '=' -f 2)"
-    local comment="$(grep "^Comment=" "$file" | head -n 1 | cut -d '=' -f 2)"
+    local icon="$(grep -m1 "^Icon=" "$file" | cut -d '=' -f 2)"
+    local name="$(grep -m1 "^Name=" "$file" | cut -d '=' -f 2)"
+    local generic_name="$(grep -m1 "^GenericName=" "$file" | cut -d '=' -f 2)"
+    local comment="$(grep -m1 "^Comment=" "$file" | cut -d '=' -f 2)"
     local description="Description not available."
-    local command="xdg-open '$file'"
+    local command="dex '$file'"
 
     if [ -n "$generic_name" ] ; then
         description="$generic_name"
@@ -76,23 +94,23 @@ DndDesktopFile() {
         description="$comment"
     fi
 
-    DndAddField
+    DndAddField "dex"
 }
 
 DndDocumentFile() {
     local file="${arg#file://}"
     local desktopfile="$(xdg-mime query default $(xdg-mime query filetype "$file"))"
     local dt2="$(find /usr/share/applications -name "$desktopfile")"
-    test -n "$dt2" || dt2="$(find "$HOME/.local/share/applications" -name "$desktopfile")"
+    [ "$dt2" ] || dt2="$(find "$HOME/.local/share/applications" -name "$desktopfile")"
     case "$file" in
         /*) ;;
         *) file="$PWD/$file" ;;
     esac
     local ending="${file##*.}"
-    local name="$(basename "$file")"
+    local name="${file##*/}"                     #"$(basename "$file")"
     local description="A $ending file"
     local command="xdg-open '$file'"
-    local icon="$(grep "^Icon=" "$dt2" | head -n 1 | cut -d '=' -f 2)"
+    local icon="$(grep -m1 "^Icon=" "$dt2" | cut -d '=' -f 2)"
 
     DndAddField
 }
@@ -122,7 +140,7 @@ DndServerStart() {
     text+="-  .desktop file (=launcher) shortcut from the start menu"
 
     local yadcmd=(eos_yad --dnd
-                  --$handler
+                  --"$handler"
                   --title="Welcome: Personal Commands drag & drop support"
                   --text="$text"
                   --width=500 --height=200

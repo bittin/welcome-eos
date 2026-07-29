@@ -8,6 +8,8 @@
 # TODO:
 # - add icons to buttons once proper supported exists in yad
 
+# shellcheck disable=2329   # check SC2329 fails here!
+
 DebugBreak() { : ; }
 
 export PROGNAME=eos-welcome
@@ -25,7 +27,7 @@ test -r  $EOS_SCRIPTS_YAD || {
     echo "ERROR: cannot find $EOS_SCRIPTS_YAD" >&2
     exit 1
 }
-source $EOS_SCRIPTS_YAD
+source $EOS_SCRIPTS_DIR/eos-script-lib-yad
 
 unset EOS_SCRIPTS_YAD
 
@@ -53,6 +55,7 @@ PROG_VERSION="$(expac -Q %v $PROG_PACKAGENAME)"
 export PROG_VERSION
 export INSTALL_LOG_FILE=/home/$EOS_LIVEUSER/endeavour-install.log
 
+echo "$0 $*" > /tmp/welcome.log     # debug output
 
 AfterTranslations() {
     # Here we have definitions that require special treatment because of
@@ -134,7 +137,7 @@ yad_Install() {
             *)   IsInstalled "$pkg" >& /dev/null || pkgs+=("$pkg") ;;
         esac
     done
-    test -z "$pkgs" && {
+    test -z "${pkgs[0]}" && {
         echo "$*: $INSTALL_ALREADY" | "${yadcmd[@]}"
         return
     }
@@ -148,33 +151,32 @@ yad_Install() {
 export -f yad_Install
 
 yad_GetCurrentDM() {
-    local current=$(ls -l /etc/systemd/system/display-manager.service | awk '{print $NF}')
-    current="$(basename $current .service)"
-    echo "$current"
+    basename "$(realpath /etc/systemd/system/display-manager.service)" .service
 }
 export -f yad_GetCurrentDM
 
 yad_ChangeDisplayManager() {
-    local cmd count
-    local dmlist="" dm
+    local cmdarr cmd count
+    local dm
     local dms=(gdm lightdm lxdm sddm)
-    local current=$(yad_GetCurrentDM)
+    local current
 
+    current=$(yad_GetCurrentDM)
     count="${#dms[@]}"
 
-    cmd=(eos_yad --list --radiolist --title="$DM_TITLE" --width=300 --height=200)
-    cmd+=(--column="$DM_COL_NAME1":rd --column="$DM_COL_NAME2")
+    cmdarr=(eos_yad --list --radiolist --title="$DM_TITLE" --width=300 --height=200)
+    cmdarr+=(--column="$DM_COL_NAME1":rd --column="$DM_COL_NAME2")
 
     for ((ix=0; ix<count; ix++)) ; do
         dm="${dms[$ix]}"
         case "$dm" in
-            $current) cmd+=(true  "$dm") ;;
-            *)        cmd+=(false "$dm") ;;
+            "$current") cmdarr+=(true  "$dm") ;;
+            *)          cmdarr+=(false "$dm") ;;
         esac
     done
 
     # selected new dm
-    dm="$("${cmd[@]}" | cut -d '|' -f 2)"
+    dm="$("${cmdarr[@]}" | cut -d '|' -f 2)"
 
     case "$dm" in
         "$current" | "") return ;;
@@ -216,6 +218,7 @@ WelcomeDevelConf() {
     local answer="$fallback"
 
     if [ -r "$devconf" ] ; then
+        # shellcheck disable=1090
         source "$devconf"
         answer="${!varname}"
         test -n "$answer" || answer="$fallback"
@@ -226,7 +229,7 @@ WelcomeDevelConf() {
 export -f WelcomeDevelConf
 
 AddField2() {    # Still experimental!
-    [ $NewFieldHandling = yes ] || return 1
+    [ "$NewFieldHandling" = yes ] || return 1
     local app="$1"
     shift
     if [ -z "$app" ] || which "$app" &>/dev/null ; then
@@ -239,7 +242,8 @@ ShowChangeResoButton() {
 
     [ -x /usr/bin/xrandr ] || return
 
-    local show_reso_butt="$(WelcomeDevelConf _show_change_reso no)"
+    local show_reso_butt
+    show_reso_butt="$(WelcomeDevelConf _show_change_reso no)"
 
     if [ "$show_reso_butt" = "no" ] ; then
         case "$(device-info --vm)" in
@@ -247,7 +251,7 @@ ShowChangeResoButton() {
                 show_reso_butt=yes ;;                  # in a VM always show the button
         esac
     fi
-    if [ -x $INSTALLER_PROGRAM ] || [ "$LOGNAME" = "$EOS_LIVEUSER" ] || [ "$show_installer" = "yes" ] ; then
+    if [ -x "$INSTALLER_PROGRAM" ] || [ "$LOGNAME" = "$EOS_LIVEUSER" ] || [ "$show_installer" = "yes" ] ; then
         show_reso_butt=yes                  # show the button if installing
     fi
 
@@ -259,18 +263,20 @@ ShowChangeResoButton() {
 export -f ShowChangeResoButton
 
 RateMirrors_arch() {
-    local tmpfile=$(mktemp -u)
+    local tmpfile
     local delay="$RATE_MIRRORS_MAX_DELAY_ARCH"
     [ "$delay" ] || delay=3600
-    chmod go-rwx $tmpfile
+    tmpfile=$(mktemp -u)
+    chmod go-rwx "$tmpfile"
     local cmd="/usr/bin/rate-mirrors --save $tmpfile --disable-comments-in-file arch --max-delay=$delay"
           cmd+="; [ -e $tmpfile ] && sudo cp $tmpfile /etc/pacman.d/mirrorlist"
           cmd+="; sleep 1; rm -f $tmpfile"
     RunInTerminal "$cmd"
 }
 RateMirrors_eos() {
-    local tmpfile=$(mktemp -u)
-    chmod go-rwx $tmpfile
+    local tmpfile
+    tmpfile=$(mktemp -u)
+    chmod go-rwx "$tmpfile"
     local cmd="/usr/bin/rate-mirrors --save $tmpfile --disable-comments-in-file endeavouros"
           cmd+="; [ -e $tmpfile ] && sudo cp $tmpfile /etc/pacman.d/endeavouros-mirrorlist"
           cmd+="; sleep 1; rm -f $tmpfile"
@@ -291,7 +297,7 @@ MirrorRankingButtons() {
             )
             # AddField2 reflector-simple "$(ltr after_install_um) (Arch, reflector-simple)!$ICO_MIRROR_RANK!$(ltr after_install_umartip)":fbtn "reflector-simple"
         fi
-        if [ $has_ratemirrors = yes ] ; then
+        if [ "$has_ratemirrors" = yes ] ; then
             tabcontents+=(
                 --field=" $(ltr after_install_um) (Arch, rate-mirrors)!$ICO_MIRROR_RANK!$(ltr after_install_umartip)":fbtn "RateMirrors_arch"
             )
@@ -320,7 +326,7 @@ MirrorRankingButtons() {
             --field=" $(ltr after_install_um) (EndeavourOS, eos-rankmirrors)!$ICO_MIRROR_RANK!$(ltr after_install_umentip)":fbtn "RunInTerminal 'LANG=C eos-rankmirrors'"
         )
     fi
-    if [ $has_ratemirrors = yes ] ; then
+    if [ "$has_ratemirrors" = yes ] ; then
         tabcontents+=(
             --field=" $(ltr after_install_um) (EndeavourOS, rate-mirrors)!$ICO_MIRROR_RANK!$(ltr after_install_umentip)":fbtn  "RateMirrors_eos"
         )
@@ -332,7 +338,7 @@ export -f MirrorRankingButtons
 
 ButtonsMayHide() {
   local -n _text_="$1"
-  if [ "$has_a_connection" = "no" ] && [ $is_installing = yes ] ; then
+  if [ "$has_a_connection" = "no" ] && [ "$is_installing" = yes ] ; then
       _text_+="\n$(ltr ins_no_connection)"
   fi
 }
@@ -342,14 +348,15 @@ INSTALL() {
   local tabnum="$2"
   local btdoc="$BLUETOOTH_INFO_PAGE"
   local INSTALLER_BROWSER=firefox
-  local text="<b>$(ltr ins_text)</b>"
+  local text
 
+  text="<b>$(ltr ins_text)</b>"
   ButtonsMayHide text
 
   local tabcontents=(
       eos_yad --align-buttons --use-interp
       --plug="$handle" --tabnum="$tabnum" --form  --columns=2
-      --image=$ICO_CALAMARES                       # $WELCOME_ICON_INSTALL_TAB
+      --image="$ICO_CALAMARES"                       # $WELCOME_ICON_INSTALL_TAB
       --text="$text"
       --text-align=left
 
@@ -384,27 +391,25 @@ AskUserCustomUrl() {
         eos_yad --entry
         --title="$INS_CUST_TEXT"
         --text="${INS_CUST_TEXT2}. $INS_CUST_TEXT3."
-        --image=$ICO_QUESTION
+        --image="$ICO_QUESTION"
     )
 
-    url=$("${cmd[@]}")
-    if [ $? -eq 0 ] ; then
-        MagicId_new "$url"
-    fi
+    url=$("${cmd[@]}") && MagicId_new "$url"
 }
 export -f AskUserCustomUrl
 
 GeneralInfo() {
   local handle="$1"
   local tabnum="$2"
-  local text="<b>$(ltr general_info_text)</b>"
+  local text
 
+  text="<b>$(ltr general_info_text)</b>"
   ButtonsMayHide text
 
   local tabcontents=(
       eos_yad --align-buttons --use-interp
       --plug="$handle" --tabnum="$tabnum" --form --columns=2
-      --image=$ICO_QUESTION
+      --image="$ICO_QUESTION"
       --text="$text"
       --text-align=left
       --field=" $(ltr general_info_ws)!$ICO_TIPS!$EOS_MAIN_PAGE":fbtn                   "WelcomeBrowser $EOS_MAIN_PAGE"
@@ -490,8 +495,9 @@ export -f AddEosAurHelpers
 AfterInstall() {
   local handle="$1"
   local tabnum="$2"
-  local text="<b>$(ltr after_install_text)</b>"
+  local text
 
+  text="<b>$(ltr after_install_text)</b>"
   ButtonsMayHide text
 
   local _exclamation='&#33;'   # '!'
@@ -501,13 +507,13 @@ AfterInstall() {
   local tabcontents=(
       eos_yad --align-buttons
       --use-interp  # don't need explicit 'bash -c' construct when calling functions
-      --plug="$handle" --tabnum="$tabnum" --form --image=$ICO_SYSTOOLS
+      --plug="$handle" --tabnum="$tabnum" --form --image="$ICO_SYSTOOLS"
       --text="$text" --columns=2
   )
   MirrorRankingButtons
 
   if [ -x /bin/eos-manual-intervention ] ; then
-      if [ $(eos-manual-intervention --count) -gt 0 ] ; then
+      if [ "$(eos-manual-intervention --count)" -gt 0 ] ; then
           tabcontents+=(--field=" $(ltr after_install_mani)!$ICO_UPDATE!$(ltr after_install_manitip)":fbtn "RunInTerminal eos-manual-intervention")
       fi
   fi
@@ -555,7 +561,7 @@ AddXfceThemingButtons() {
         local -r new_theme="$1"
         local -r date_time=$(date +%Y%m%d-%H:%M.%S)
         local -r conf="$HOME/.config"
-        local -r conf2='~/.config'
+        local -r conf2="\~/.config"
         local -r bak=xfce-theme-bak
         local dir
         local msg=""
@@ -568,7 +574,7 @@ AddXfceThemingButtons() {
         msg+="The new theme will be in folders $conf2/{$dirs_list}\n\n"
         msg+="Accept theme change and reboot now?"
 
-        eos_yad --form --title="Change Xfce theme to $new_theme" --text="$msg" --image=$ICO_THEME \
+        eos_yad --form --title="Change Xfce theme to $new_theme" --text="$msg" --image="$ICO_THEME" \
                 --button='yad-cancel!!Do nothing':1 --button='yad-ok!!Accept theme change and reboot now':0
 
         case "$?" in
@@ -598,7 +604,7 @@ PacdiffIcon() {
     # see /etc/eos-script-lib-yad.conf for differs
 
     for differ in "${EOS_WELCOME_PACDIFFERS[@]}" ; do
-        if [ -x /usr/bin/$differ ] ; then
+        if [ -x "/usr/bin/$differ" ] ; then
             case "$differ" in
                 kompare)      differ_icon=$ICO_KOMPARE ;;
                 meld)         differ_icon=$ICO_MELD ;;
@@ -612,7 +618,7 @@ PacdiffIcon() {
 
 TesterIsoFetching() {
     # for the ISO testers
-    if [ $IsIsoTesting = yes ] || pacman -Q fetch-iso &>/dev/null ; then
+    if [ "$IsIsoTesting" = yes ] || pacman -Q fetch-iso &>/dev/null ; then
         IsIsoTesting=yes
         tabcontents+=(
             --field=" Fetch a tester ISO!$ICO_INFO_WEB!For ISO testers only":fbtn   "RunInTerminal fetch-iso"
@@ -623,8 +629,9 @@ TesterIsoFetching() {
 DailyAssistant() {
   local handle="$1"
   local tabnum="$2"
-  local text="<b>$(ltr daily_assistant_text)</b>"
+  local text
 
+  text="<b>$(ltr daily_assistant_text)</b>"
   ButtonsMayHide text
 
   local _exclamation='&#33;'   # '!'
@@ -637,7 +644,7 @@ DailyAssistant() {
 
   local tabcontents=(
       eos_yad --align-buttons --use-interp  # don't need explicit 'bash -c' construct when calling functions
-      --plug="$handle" --tabnum="$tabnum" --form --image=$ICO_SYSTOOLS
+      --plug="$handle" --tabnum="$tabnum" --form --image="$ICO_SYSTOOLS"
       --text="$text" --columns=2
       # --field=" $(ltr after_install_us) ($EOS_AUR_HELPER)!$ICO_UPDATE!$(ltr after_install_ustip)":fbtn "UpdateWithEosAurHelper"    # "RunInTerminal UpdateInTerminal --lang=$lang"
       # --field=" $(ltr after_install_us) (UpdateInTerminal)!$ICO_UPDATE!$(ltr after_install_ustip)":fbtn "RunInTerminal UpdateInTerminal --lang=$lang"
@@ -690,8 +697,9 @@ WelcomeInitialTab() {
     ##        in file ~/.config/welcome-own-cmds.conf.
 
     if [ ! -r "$welcome_configurator" ] ; then
-        echo "EOS_WELCOME_ACTIVE_TAB_NUMBER=2  # default: 2 (=After Install)" > $welcome_configurator
+        echo "EOS_WELCOME_ACTIVE_TAB_NUMBER=2  # default: 2 (=After Install)" > "$welcome_configurator"
     fi
+    # shellcheck disable=1090
     source "$welcome_configurator"
     [ -z "$EOS_WELCOME_ACTIVE_TAB_NUMBER" ] && export EOS_WELCOME_ACTIVE_TAB_NUMBER=2
 
@@ -703,27 +711,29 @@ WelcomeInitialTab() {
     txt+="After selecting the initial tab, Welcome will be restarted.\n"
     local cmd=(
         eos_yad --form --align-buttons --use-interp --title="Welcome initial tab"
-        --text="$txt" --image=$ICO_PREFERENCES_SYSTEM
+        --text="$txt" --image="$ICO_PREFERENCES_SYSTEM"
         --field="Initial tab number\t\t":num "$EOS_WELCOME_ACTIVE_TAB_NUMBER!$ICO_PREFERENCES_DISPLAY!1"
     )
-    local result="$("${cmd[@]}" | cut -d '|' -f1)"
+    local result
+    result="$("${cmd[@]}" | cut -d '|' -f1)"
     [ -z "$result" ] && return
-    sed -i $welcome_configurator -e "s|^EOS_WELCOME_ACTIVE_TAB_NUMBER=[0-9]*|EOS_WELCOME_ACTIVE_TAB_NUMBER=$result|"
+    sed -i "$welcome_configurator" -e "s|^EOS_WELCOME_ACTIVE_TAB_NUMBER=[0-9]*|EOS_WELCOME_ACTIVE_TAB_NUMBER=$result|"
 
     RestartWelcome
 }
 export -f WelcomeInitialTab
 
 RestartWelcome() {
-    local tmpfile=$(mktemp $HOME/.cache/.greeter_restart.XXXXX)
-    cat <<EOF > $tmpfile
+    local tmpfile
+    tmpfile=$(mktemp "$HOME"/.cache/.greeter_restart.XXXXX)
+    cat <<EOF > "$tmpfile"
 pkill -f "/usr/bin/yad --window-icon=$EOS_WICON"
 sleep 0.2
 eos-welcome $WELCOME_ARGS $* &
 sleep 0.5
 rm -f $tmpfile
 EOF
-    chmod +x $tmpfile
+    chmod +x "$tmpfile"
     $tmpfile
 }
 export -f RestartWelcome
@@ -733,35 +743,26 @@ Github2Gitlab() {
 }
 export -f Github2Gitlab
 
-Reisub() {
-    local file=/etc/sysctl.d/99-reisub.conf
-    local time=5000
-
-    case "$1" in
-        --enable)    [ -e $file ] || echo 'kernel.sysrq=1' | pkexec tee $file > /dev/null ;;
-        --disable)   [ -e $file ] && pkexec rm -f $file ;;
-    esac
-    if [ -e $file ] ; then
-        eos_notification $ICO_INFO normal $time REISUB "REISUB $_COMMONPHRASE_ENABLED" ""
-    else
-        eos_notification $ICO_INFO normal $time REISUB "REISUB $_COMMONPHRASE_DISABLED" ""
-    fi
-}
-export -f Reisub
+# Reisub() {
+#     eos-reisub "$1"
+# }
+# export -f Reisub
 
 UsefulTips() {
   local handle="$1"
   local tabnum="$2"
   local _and='&#38;'           # '&'
-  local text="<b>$(ltr useful_tips_text)</b>"
+  # shellcheck disable=2034
   local -r REISUB_PAGE="https://forum.endeavouros.com/t/tip-enable-magic-sysrq-key-reisub"
+  local text
 
+  text="<b>$(ltr useful_tips_text)</b>"
   ButtonsMayHide text
 
   local tabcontents+=(
       eos_yad --align-buttons --use-interp
       --plug="$handle" --tabnum="$tabnum" --form --columns=2
-      --image=$ICO_TIPS
+      --image="$ICO_TIPS"
       --text="$text"
   )
   AddWelcomeTipPages
@@ -799,7 +800,7 @@ AddMoreApps() {
   local tabcontents=(
       eos_yad --align-buttons --use-interp
       --plug="$handle" --tabnum="$tabnum" --form --text-align=left --columns=2
-      --image=$ICO_INSTALL
+      --image="$ICO_INSTALL"
   )
   local shown_app_buttons=0
 
@@ -818,7 +819,7 @@ AddMoreApps() {
 
   # Now we know if we have any apps in the install list.
 
-  if [ $shown_app_buttons -eq 0 ] ; then
+  if [ "$shown_app_buttons" -eq 0 ] ; then
       text="<b>$(ltr add_more_apps_done1_text)$(ltr add_more_apps_done2_text)</b>"
   else
       text="<b>$(ltr add_more_apps_text) $(ltr add_more_apps_done2_text)</b>"
@@ -831,22 +832,42 @@ AddMoreApps() {
 
 #### Support for personal commands:
 
+AllAppsExist() {
+    local commands=() cmd
+    # shellcheck disable=2086
+    readarray -t commands < <(printf "%s\n" ${1//,/$'\n'})     # $1 = aa,bb,"cc cc"
+    for cmd in "${commands[@]}" ; do
+        if ! /bin/which "$cmd" &>/dev/null ; then
+            echo "$PROGNAME: warning: command '$cmd' not found. See also: $errlog" >&2
+            return 1
+        fi
+    done
+    return 0
+}
+
 personal_commands_add() {   # add one personal command
     [ "$is_installing" = "yes" ] && return
     local commandline="$1"
     local name="$2"
     local icon="$3"
     local description="$4"
-    local cmd="$5"
+    local required_apps="$5"
+    local command="${commandline%% *}"
+    local -r errlog=/tmp/welcome-personal-commands.log
+
+    if [ "$command" ] && [[ ! "$required_apps" =~ $command ]] ; then
+        required_apps+=",$command"
+    fi
+    AllAppsExist "$required_apps" || return 1
 
     [ -n "$description" ] || description="$commandline"
-    [ -n "$cmd" ] || cmd="$(echo "$commandline" | /usr/bin/awk '{print $1}')"
+    # [ -n "$command" ] || command="$(echo "$commandline" | /usr/bin/awk '{print $1}')"
 
-    if (/usr/bin/which $cmd &> /dev/null) ; then
+    if /usr/bin/which "$command" &> /dev/null ; then
         welcome_own_commands+=(--field=" $name!$icon!$description":fbtn "$commandline")
     else
-        printf "%s: %s\n    %s\n" "$(/usr/bin/date "+%x %X")" "$FUNCNAME:" "warning: command '$cmd' not found" >> /tmp/welcome-personal-commands.log
-        echo "$FUNCNAME: warning: command '$cmd' not found" >&2
+        printf "%s: %s\n    %s\n" "$(/usr/bin/date "+%x %X")" "${FUNCNAME[0]}:" "warning: command '$command' not found" >> "$errlog"
+        echo "${FUNCNAME[0]}: warning: command '$command' not found. See also: $errlog" >&2
     fi
 }
 
@@ -870,7 +891,8 @@ _align_buttons_on_tab() {
         case "$xx" in
             --field=*)
                 if [ "$xx" != "${xx/*_align(/}" ] ; then
-                    arr[$ix]="$(echo "$xx" | sed 's|_align(\(.*\))!| \1!|')"
+                    # shellcheck disable=2001
+                    arr[ix]="$(echo "$xx" | sed 's|_align(\(.*\))!| \1!|')"
                 fi
                 ;;
         esac
@@ -895,7 +917,7 @@ OwnCommands() {
       elif [ -n "$(echo "$cols" | tr -d '0-9')" ] ; then
           cols=2
           echo "Warning: value '$columns_for_own_commands' for variable 'columns_for_own_commands' is unsupported, using $cols." >&2
-      elif [ $cols -lt 1 ] || [ $cols -gt 20 ] ; then
+      elif [ "$cols" -lt 1 ] || [ "$cols" -gt 20 ] ; then
           cols=2
           echo "Warning: value '$columns_for_own_commands' for variable 'columns_for_own_commands' is unsupported, using $cols." >&2
       fi
@@ -904,8 +926,8 @@ OwnCommands() {
 
   local tabcontents=(
       eos_yad --align-buttons --use-interp
-      --plug="$handle" --tabnum="$tabnum" --form --columns=$cols
-      --image=$ICO_OWN_COMMANDS
+      --plug="$handle" --tabnum="$tabnum" --form --columns="$cols"
+      --image="$ICO_OWN_COMMANDS"
       --text="<b>$(ltr nb_tab_owncmds_text)</b>"
   )
   if [ "$show_buttons" = "yes" ] ; then
@@ -943,7 +965,7 @@ CreateNotebookCommands() {
         )
     fi
     if [ "$is_installing" = "no" ] ; then
-        if [ -n "$welcome_own_commands" ] ; then
+        if [ -n "${welcome_own_commands[0]}" ] ; then
             _NOTEBOOK_TABS+=(OwnCommands)
         fi
     fi
@@ -967,8 +989,8 @@ WelcomeHelp_opt() {
                     --fontname="Mono 10" \
                     --text="<b>$WH_BUTT_TEXT</b>" \
                     --text-align=left \
-                    --image=$ICO_HELP --button=yad-ok:0
-    [ "$1" ] && exit $1
+                    --image="$ICO_HELP" --button=yad-ok:0
+    [ "$1" ] && exit "$1"
 }
 WelcomeHelp() {
     WelcomeBrowser "$EOS_WELCOME_PAGE"
@@ -986,15 +1008,17 @@ WelcomeChangelog() {
 export -f WelcomeChangelog
 
 ImportantNews() {
-    WelcomeBrowser "$(Github2Gitlab $WELCOME_NEWS_PAGE)"
+    WelcomeBrowser "$(Github2Gitlab "$WELCOME_NEWS_PAGE")"
 }
 export -f ImportantNews
 
 SetBrowser() {
-    [ -n "$_WELCOME_BROWSER" ] && return
+    [ "$_WELCOME_BROWSER" ] && return
     case "$is_installing" in
         yes) export _WELCOME_BROWSER=firefox ;;
-        *)   export _WELCOME_BROWSER="$(eos_select_browser)" ;;
+        *)   _WELCOME_BROWSER="$(eos_select_browser)"
+             export _WELCOME_BROWSER
+             ;;
     esac
 }
 export -f SetBrowser
@@ -1012,7 +1036,7 @@ PrepareTabs() {
 SeparateWordsWithSpaces() { # add a space before a capital letter inside a word
     local tabname="$1"
 
-    if [ "$(echo "$tabname" | tr -d '[a-z]')" = "$tabname" ] ; then
+    if [ "${tabname//[a-z]/}" = "$tabname" ] ; then
         echo "$tabname"           # all capital letters ==> don't change
     else
         echo "$tabname" | sed -e 's|\([A-Z]\)| \1|g' -e 's|^ ||'  # add space before capital letters
@@ -1043,7 +1067,8 @@ EOF
     fi
 
     for xx in Greeter OnceDaily LastCheck ; do
-        if [ -z "$(grep "^${xx}=" "$WELCOME_CONFIG" 2>/dev/null)" ] ; then
+        # if [ -z "$(grep "^${xx}=" "$WELCOME_CONFIG" 2>/dev/null)" ] ; then
+        if ! grep -q "^${xx}=" "$WELCOME_CONFIG" 2>/dev/null ; then
             echo "${defaults[$xx]}" >> "$WELCOME_CONFIG"
         fi
     done
@@ -1058,7 +1083,7 @@ EOF
 
     case "$value" in
         disable)
-            eos_yad --form --image=$ICO_INFO --text="$(ltr settings_dis_contents)" \
+            eos_yad --form --image="$ICO_INFO" --text="$(ltr settings_dis_contents)" \
                     --title="$(ltr settings_dis_title)" \
                     --button=" $(ltr settings_dis_butt)!$ICO_EXIT!$(ltr settings_dis_buttip)":11
             ;;
@@ -1070,7 +1095,8 @@ EOF
                 echo yes
                 return
             fi
-            local date="$(date +%Y%m%d)"
+            local date
+            date="$(date +%Y%m%d)"
             if [ "$(grep "^LastCheck=" "$WELCOME_CONFIG" 2>/dev/null | cut -d '=' -f 2)" = "$date" ] ; then
                 echo "Info: Stopping because of setting OnceDaily=yes in file $WELCOME_CONFIG." >&2
                 echo no
@@ -1085,12 +1111,12 @@ EOF
 IsR8168Card() {
     # Return 0 if ethernet card is realtek 8168.
 
-    if [ 0 -eq 1 ] && [ "$testing" = "yes" ] ; then   # this is only for testing
+    if false && [ "$testing" = "yes" ] ; then   # this is only for testing
         return 0
     fi
 
-    if [ -n "$(/usr/bin/lspci | /usr/bin/grep -w "Ethernet controller" | /usr/bin/grep -w 8168)" ] ; then   # have the card?
-        if [ -n "$(lsmod | grep -Pw 'r8169|r8168')" ] ; then                                                # driver is in use?
+    if lspci | grep -w "Ethernet controller" | grep -qw 8168 ; then   # have the card?
+        if lsmod | grep -qPw 'r8169|r8168' ; then                     # driver is in use?
             return 0
         fi
     fi
@@ -1106,7 +1132,8 @@ ethernet_toggle_r8168_r8169() {
         if (eos-connection-checker) ; then
             cmds+="; pacman -Syu --noconfirm r8168"
         else
-            local pkg="$(/usr/bin/ls -1 /opt/extra-drivers/r8168-*-x86_64.pkg.tar.zst 2>/dev/null)"  # may find it in /opt/extra-drivers !
+            local pkg
+            pkg="$(/usr/bin/ls -1 /opt/extra-drivers/r8168-*-x86_64.pkg.tar.zst 2>/dev/null)"  # may find it in /opt/extra-drivers !
             if [ -n "$pkg" ] ; then
                 cmds="; pacman -U --noconfirm $pkg"
             else
@@ -1128,10 +1155,13 @@ ethernet_toggle_r8168_r8169() {
 export -f ethernet_toggle_r8168_r8169
 
 R8168check_at_install() {
-    local card8168="$(lspci -vnn | grep -w Ethernet | grep -w Realtek | grep -w 8168 )"
+    local card8168
+    card8168="$(lspci -vnn | grep -w Ethernet | grep -w Realtek | grep -w 8168 )"
     if [ -n "$card8168" ] ; then
         # we have 8618 card
-        local cardid="$(echo "$card8168" | sed 's|.*\[\([^]]*\)\].*|\1|')"    # e.g. "10ec:8168"
+        local cardid
+        # shellcheck disable=2001
+        cardid="$(echo "$card8168" | sed 's|.*\[\([^]]*\)\].*|\1|')"    # e.g. "10ec:8168"
         case "$cardid" in
             # 10ec:8168) ;;                # card id is known to work with kernel's r8169 module
             *)
@@ -1143,7 +1173,7 @@ R8168check_at_install() {
                 local cmd=(
                     eos_yad
                     --form
-                    --image=$ICO_QUESTION
+                    --image="$ICO_QUESTION"
                     --title="Select the driver for the Realtek 8168 Ethernet card"
                     --text="$txt"
                     --button="r8168":1
@@ -1153,8 +1183,10 @@ R8168check_at_install() {
                 case "$?" in
                     1)
                         # use r8168 which is stored at /opt/extra-drivers
-                        local pkg="$(/usr/bin/ls -1 /opt/extra-drivers/r8168-*-x86_64.pkg.tar.zst 2>/dev/null)"
-                        if [ -n "$pkg" ] ; then
+                        local pkg
+                        pkg="$(/usr/bin/ls -1 /opt/extra-drivers/r8168-*-x86_64.pkg.tar.zst 2>/dev/null)"
+                        if [ "$pkg" ] ; then
+                            # shellcheck disable=2086
                             sudo pacman -U --noconfirm $pkg
                             sudo modprobe -r r8169 2>/dev/null
                             sudo modprobe r8168 2>/dev/null
@@ -1189,7 +1221,8 @@ MagicId_new() {
         *)
             # use special id
             url=https://raw.githubusercontent.com/endeavouros-team/sandbox/master/pkg/list  # currently not in gitlab!
-            local data=$(curl -Lsm 10 -o- $url)
+            local data
+            data=$(curl -Lsm 10 -o- $url)
             [ -n "$data" ] || { echo "Option --ni: failed to fetch data." >&2 ; return 1 ; }
             url=$(echo "$data" | grep "^$id"= | cut -d'=' -f2)
             [ -n "$url" ] || { echo "Option --ni: URL not found." >&2 ; return 1 ; }
@@ -1220,24 +1253,26 @@ MagicId() {
     fi
     local target=$HOME/user_pkglist.txt
     local time
-    local data="$(curl -s $ENDEAVOUROS_TEAM/sandbox/master/pkg/list)"
+    local data
+    data="$(curl -s $ENDEAVOUROS_TEAM/sandbox/master/pkg/list)"
     if [ -z "$data" ] ; then
         echo "Error: list not found." >&2
         return 1
     fi
-    local url="$(echo "$data" | grep "^$id=" | sed "s|^$id=||")"
+    local url
+    url="$(echo "$data" | grep "^$id=" | sed "s|^$id=||")"
     if [ -z "$url" ] ; then
         echo "Id '$id' not found." >&2
         return 1
     fi
-    if [ -r $target ] ; then
+    if [ -r "$target" ] ; then
         time=$(date +%Y%m%d-%H%M-%S)
         echo "Moving existing $target to $target.$time" >&2
-        mv $target $target.$time
+        mv "$target" "$target.$time"
     fi
-    if (! Wget2Curl -q -O $target "$url") ; then
+    if (! Wget2Curl -q -O "$target" "$url") ; then
         echo "Sorry, URL '$url' not found. " >&2
-        [ -r $target.$time ] && mv $target.$time $target
+        [ -r "$target.$time" ] && mv "$target.$time" "$target"
         return 1
     fi
     case "$id" in
@@ -1254,14 +1289,15 @@ MagicId() {
 VboxGuestEnable() {
     case "$(device-info --vm)" in
         virtualbox)
-            if [ -n "$(systemctl status vboxservice 2>/dev/null | grep "inactive (dead)")" ] ; then
-                local label="$(ltr after_install_vbox1)"
-                local msg1="$(ltr after_install_vbox2)"
-                local cmd="systemctl enable --now vboxservice.service"
+            if systemctl status vboxservice 2>/dev/null | grep -q "inactive (dead)" ; then
+                local label msg1
+                label="$(ltr after_install_vbox1)"
+                msg1="$(ltr after_install_vbox2)"
+                local cmd2="systemctl enable --now vboxservice.service"
                 local msgvb="$msg1\n<b>$label</b>"
                 local icon=$ICO_TIPS
-                eos_yad --form --title="Info" --text="$msgvb" --image=$ICO_TIPS --button=yad-quit:0 &
-                tabcontents+=(--field=" $label!$ICO_ENABLE!$cmd":fbtn "RunInTerminal $cmd")
+                eos_yad --form --title="Info" --text="$msgvb" --image="$ICO_TIPS" --button=yad-quit:0 &
+                tabcontents+=(--field=" $label!$ICO_ENABLE!$cmd2":fbtn "RunInTerminal $cmd2")
             fi
             ;;
     esac
@@ -1342,20 +1378,20 @@ GetIsoDateStr() {
     echo "ISO: $ISO_VERSION"
 }
 
-SetCalamaresVersionInfo() {
-    if [ -n "$ISO_VERSION" ] ; then
-        local file=/etc/calamares/branding/endeavouros/branding.desc
-        if [ -f $file ] ; then
-            local str
-
-            for str in "version:" "shortVersion:" ; do
-                if [ "$(grep -w "$str" $file | awk '{print $2}')" != "$ISO_VERSION" ] ; then
-                    sudo sed -i $file -E "s|^([ ]+$str[ ]+).*|\1$ISO_VERSION|"
-                fi
-            done
-        fi
-    fi
-}
+# SetCalamaresVersionInfo() {
+#     if [ -n "$ISO_VERSION" ] ; then
+#         local file=/etc/calamares/branding/endeavouros/branding.desc
+#         if [ -f "$file" ] ; then
+#             local str
+#
+#             for str in "version:" "shortVersion:" ; do
+#                 if [ "$(grep -w "$str" "$file" | awk '{print $2}')" != "$ISO_VERSION" ] ; then
+#                     sudo sed -i "$file" -E "s|^([ ]+$str[ ]+).*|\1$ISO_VERSION|"
+#                 fi
+#             done
+#         fi
+#     fi
+# }
 
 VerboseLog() {
     if [ "$WELCOME_VERBOSE_LOG" = "yes" ] ; then
@@ -1441,7 +1477,7 @@ LangChoose() {
     fi
     if [ "$is_installing" = "yes" ] ; then
         # change locale only when installing
-        if [ -z "$(grep "^$lang.UTF-8 UTF-8$" /etc/locale.gen)" ] ; then
+        if ! grep -q "^$lang.UTF-8 UTF-8$" /etc/locale.gen ; then
             cp /etc/locale.gen /tmp/locale.gen.tmp
             echo "$lang.UTF-8 UTF-8" >> /tmp/locale.gen.tmp
             sudo cp /tmp/locale.gen.tmp /etc/locale.gen
@@ -1471,7 +1507,7 @@ LanguageSelection() {
     LangChoose ALL
     LangImplConvert
 
-    RestartWelcome --lang=$lang
+    RestartWelcome --lang="$lang"
 }
 export -f LanguageSelection
 
@@ -1525,6 +1561,7 @@ HandleOptions2() {
             --help|-h)      WelcomeHelp_opt 0 ;;
             --once | -1)    allow_run_if_disabled=yes ;;
             --startdelay)   start_delay="$2"; shift ;;
+            --autostart)    auto_started=yes ;;
             --testing)      testing=yes ;;
             --version)      echo "$PROG_VERSION" >&2 ; exit ;;
 
@@ -1552,14 +1589,14 @@ StartHere() {
     _MirrorlistCheck
     DebugBreak
 
-    local -r LOPTS="changelog,lang:,tr-engine:,tr-prefer:,id:,ni:,verboselog,genlang:,help,enable,disable,once,startdelay:,version,testing,installer"
+    local -r LOPTS="changelog,lang:,tr-engine:,tr-prefer:,id:,ni:,verboselog,genlang:,help,enable,disable,once,startdelay:,version,testing,installer,autostart"
     local -r SOPTS="1fhl:"
 
     local arg lang=""
     local yad_zombie_log=/tmp/yad-zombies.log
     local tr_engine=bing
     local tr_prefer=manual
-    local pb_percent=0
+    # local pb_percent=0
     local testing=no
     local allow_run_if_disabled=no            # yes = allow run even if disabled
 
@@ -1604,7 +1641,7 @@ StartHere() {
                 local -r ICO_NETWORKMANAGER=/usr/share/icons/Qogir/scalable/apps/networkmanager.svg
                 eos_yad --form \
                         --title="$(ltr ins_conn_issue_title)" \
-                        --image=$ICO_QUESTION \
+                        --image="$ICO_QUESTION" \
                         --text="$(ltr ins_conn_issue_text)" \
                         --button="$(ltr ins_conn_issue_nm1)!$ICO_NETWORKMANAGER!$(ltr ins_conn_issue_nm2)":1 \
                         --button="$(ltr ins_conn_issue_oi1)!$ICO_INSTALL!$(ltr ins_conn_issue_oi2)":3 \
@@ -1664,9 +1701,11 @@ StartHere() {
         EOS_FILESERVER_SITE="$(eos-select-file-server)"        # do this first at install !!!
 
         if [ "$has_a_connection" = "yes" ] ; then
-            local timezone="$(show-location-info timezone)"
+            local timezone
+            timezone="$(show-location-info timezone)"
             if [ -n "$timezone" ] ; then
-                local preprelogfile="$(eos-select-file-server --logfilename)"
+                local preprelogfile
+                preprelogfile="$(eos-select-file-server --logfilename)"
                 echo "==> $PROGNAME: info: setting timezone to '$timezone'" >> "$preprelogfile"
                 timedatectl set-timezone "$timezone"
                 sleep 0.1
@@ -1696,19 +1735,20 @@ StartHere() {
 
     AfterTranslations
 
-    KillExtraYad > /tmp/yad-zombies.log
+    KillExtraYad > $yad_zombie_log
 
     local -r WELCOME_CONFIG="$HOME/.config/EOS-greeter.conf"      # "Welcome" used to be "Greeter" ...
-    local -r WELCOME_CONFIG2='$HOME/.config/EOS-greeter.conf'
+    local -r WELCOME_CONFIG2="\$HOME/.config/EOS-greeter.conf"
     export welcome_configurator="$HOME/.config/welcome.conf"      # another welcome config... should combine these
 
     if [ -r "$welcome_configurator" ] ; then
-        if [ -n "$(grep "^local ConfVersion" "$welcome_configurator")" ] || [ -n "$(grep "^local MaxButtonNameLength" "$welcome_configurator")" ] ; then
+        if grep -q "^local ConfVersion" "$welcome_configurator" || grep -q "^local MaxButtonNameLength" "$welcome_configurator" ; then
             # this is an old config file, just delete the file
             rm -f "$welcome_configurator"
         fi
     fi
 
+    # shellcheck disable=1090
     [ -r "$welcome_configurator" ] && source "$welcome_configurator"
 
     [ "$EOS_WELCOME_ACTIVE_TAB_NUMBER" ] || EOS_WELCOME_ACTIVE_TAB_NUMBER=2
@@ -1717,7 +1757,13 @@ StartHere() {
 
     export user_pkglist_url=""
     local start_delay=0
+    local auto_started=no
     local _NOTEBOOK_TITLE="$PRETTY_PROGNAME v$PROG_VERSION"        # main window title
+
+    case "$auto_started" in
+        yes) ;;    # started by the autostart .desktop (?)
+        no) ;;     # started by other means
+    esac
 
     if [ "$is_installing" = "yes" ] ; then
         [ -n "$ISO_VERSION" ] && _NOTEBOOK_TITLE+="  [$(GetIsoDateStr)]"
@@ -1729,10 +1775,12 @@ StartHere() {
 
     [ "$(WelcomeSettings continue)" = "no" ] && return
 
-    local adding_own_commands=$(Github2Gitlab $WELCOME_ADD_COMMANDS_INFO)
+    local adding_own_commands
+    adding_own_commands=$(Github2Gitlab $WELCOME_ADD_COMMANDS_INFO)
     local own_commands_conf="$HOME/.config/welcome-own-cmds.conf"
 
-    [ -r    "$own_commands_conf" ] && source "$own_commands_conf"
+    # shellcheck disable=1090
+    [ -r "$own_commands_conf" ] && source "$own_commands_conf"
 
     CreateNotebookCommands
 
@@ -1759,13 +1807,13 @@ StartHere() {
 
         eos_yad_check_internet_connection $verbosity 2 "3s" "Welcome" || return 1
 
-        if [ -n "$TERMINAL_AT_START" ] ; then
-            arg="$(echo "$TERMINAL_AT_START" | awk '{print $1}')"
-            which "$arg" 2>/dev/null && {
+        if [ "$TERMINAL_AT_START" ] ; then
+            arg="${TERMINAL_AT_START%% *}"
+            if which "$arg" 2>/dev/null ; then
                 $TERMINAL_AT_START &
-            } || {
+            else
                 echo "Warning: terminal '$arg' (setting TERMINAL_AT_START) in file /etc/eos-script-lib-yad.conf is not supported." >&2
-            }
+            fi
         fi
     else
         [ "$has_a_connection" = "yes" ] && eos-kbd-set
@@ -1792,7 +1840,8 @@ StartHere() {
         fi
     fi
 
-    local handle="$(shuf -i 700000-999999 -n 1)"
+    local handle
+    handle="$(shuf -i 700000-999999 -n 1)"
     local tab tabname
     local notebook   # contains the main yad command
 
@@ -1814,10 +1863,11 @@ StartHere() {
         #   - comment lines (first non-white char is #)
         #   - empty lines (contain only white spaces)
         #
-        local news_date_url="$(Github2Gitlab https://raw.githubusercontent.com/endeavouros-team/Important-news/main/do_notify)"
+        local news_date_url
+        news_date_url="$(Github2Gitlab https://raw.githubusercontent.com/endeavouros-team/Important-news/main/do_notify)"
         local news_dates="" latest_date=""
         local latest_welcome_news_date_file="$HOME/.config/welcome_news_latest_date_file"
-        news_dates="$(curl --fail -Lsm 10 -o- $news_date_url | grep -Pv "^[ \t]*#|^[ \t]*$")"
+        news_dates="$(curl --fail -Lsm 10 -o- "$news_date_url" | grep -Pv "^[ \t]*#|^[ \t]*$")"
         latest_date=$(echo "$news_dates" | tail -n1)
         if [ "$latest_date" ] && [ "$latest_date" != "$(cat "$latest_welcome_news_date_file" 2>/dev/null)" ] ; then
            echo "$latest_date" > "$latest_welcome_news_date_file"
@@ -1826,7 +1876,7 @@ StartHere() {
     fi
 
     for tab in "${_NOTEBOOK_TABS[@]}" ; do
-        tabname="$(ltr nb_tab_$tab)"
+        tabname="$(ltr "nb_tab_$tab")"
         #tabname="$(SeparateWordsWithSpaces "$tabname")"
         notebook+=(--tab="$tabname")
     done
@@ -1838,7 +1888,7 @@ StartHere() {
     elif [ -n "$EOS_WELCOME_ACTIVE_TAB_NUMBER" ] ; then
         active_tab_nr=$EOS_WELCOME_ACTIVE_TAB_NUMBER
     else
-        if [ -n "$welcome_own_commands" ] ; then
+        if [ -n "${welcome_own_commands[0]}" ] ; then
             # 'activate_own_commands_tab' may have been set
             # in the "$own_commands_conf" file
             case "$activate_own_commands_tab" in
@@ -1848,7 +1898,7 @@ StartHere() {
             esac
         fi
     fi
-    notebook+=(--active-tab=$active_tab_nr)
+    notebook+=(--active-tab="$active_tab_nr")
 
     [ "$is_installing" = "yes" ] && LanguageSelectionButton
 

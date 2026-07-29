@@ -5,10 +5,7 @@ Name=Welcome
 Comment=EndeavourOS Welcome launcher
 Comment[fi]=EndeavourOS:n Welcome-ohjelman käynnistin
 Comment[sk]=Spúšťač privítania v systéme EndeavourOS
-# for autostart:
-Exec=eos-welcome --startdelay=3
-# for desktop launcher:
-#Exec=eos-welcome --once
+Exec=eos-welcome
 Icon=endeavouros-icon
 # StartupNotify=false
 # Terminal=False
